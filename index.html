@@ -186,6 +186,56 @@
     .feedback.ok { color: #166534; }
     .feedback.no { color: #b91c1c; }
 
+    .thermo-wrap {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: center;
+      background: #fcfdff;
+    }
+
+    .thermometer {
+      height: 120px;
+      width: 18px;
+      border: 2px solid #9ca3af;
+      border-radius: 12px;
+      position: relative;
+      background: linear-gradient(to top, #fee2e2, #eff6ff);
+      overflow: hidden;
+      margin-left: 4px;
+    }
+
+    .thermo-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 0%;
+      background: linear-gradient(to top, #ef4444, #f59e0b);
+      transition: height 0.15s linear;
+    }
+
+    .thermo-bulb {
+      position: absolute;
+      bottom: -10px;
+      left: -7px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid #9ca3af;
+      background: #ef4444;
+    }
+
+    .thermo-text {
+      font-size: 0.83rem;
+      color: #374151;
+      line-height: 1.3;
+    }
+
     .legend {
       font-size: 0.82rem;
       color: var(--muted);
@@ -223,12 +273,22 @@
         <div class="metric"><div class="name">Current (I)</div><div class="val" id="currentVal">0.30 A</div></div>
         <div class="metric"><div class="name">Potential Difference (V)</div><div class="val" id="voltVal">6.0 V</div></div>
         <div class="metric"><div class="name">Resistance (R)</div><div class="val" id="resVal">20 Ω</div></div>
-        <div class="metric"><div class="name">Electron Drift Velocity</div><div class="val" id="driftVal">0.000 px/s</div></div>
+        <div class="metric"><div class="name">Wire Temperature</div><div class="val" id="tempVal">22.0 °C</div></div>
+      </div>
+
+      <div class="thermo-wrap" aria-label="Current heating thermometer">
+        <div class="thermometer">
+          <div id="thermoFill" class="thermo-fill"></div>
+          <div class="thermo-bulb"></div>
+        </div>
+        <div class="thermo-text" id="thermoText">
+          Heating model: <strong>P = IV = I²R = V²/R</strong>. Larger power means a higher wire temperature.
+        </div>
       </div>
 
       <div class="legend">
         Blue dots = electrons (mobile). Gray circles = positive ions (fixed lattice). Yellow flashes = scattering collisions.
-        Color in wire shows electric potential (high near + terminal, low near - terminal). Arrows show conventional current direction.
+        Color in wire shows electric potential from − to +. Arrows show conventional current direction. Thermometer rises when electrical power (IV) increases.
       </div>
     </section>
 
@@ -273,7 +333,9 @@
     const currentVal = document.getElementById('currentVal');
     const voltVal = document.getElementById('voltVal');
     const resVal = document.getElementById('resVal');
-    const driftVal = document.getElementById('driftVal');
+    const tempVal = document.getElementById('tempVal');
+    const thermoFill = document.getElementById('thermoFill');
+    const thermoText = document.getElementById('thermoText');
 
     const stageCard = document.getElementById('stageCard');
     const stageTabs = [...document.querySelectorAll('.stage-tab')];
@@ -509,11 +571,16 @@
       if (vHistory.length > maxSamples) vHistory.shift();
 
       // Display readouts
-      const avgDrift = electrons.reduce((s, e) => s + e.vx, 0) / electrons.length;
+      const power = current * voltage; // watts
+      const tempC = 22 + power * 6; // simple classroom heating model
+      const tempPct = clamp((tempC - 22) / (120 - 22), 0, 1) * 100;
+
       currentVal.textContent = `${current.toFixed(2)} A`;
       voltVal.textContent = `${voltage.toFixed(1)} V`;
       resVal.textContent = `${resistance.toFixed(0)} Ω`;
-      driftVal.textContent = `${avgDrift.toFixed(2)} px/s`;
+      tempVal.textContent = `${tempC.toFixed(1)} °C`;
+      thermoFill.style.height = `${tempPct.toFixed(1)}%`;
+      thermoText.innerHTML = `Heating model: <strong>P = IV = I²R = V²/R</strong>.<br>Current: ${current.toFixed(2)} A, Voltage: ${voltage.toFixed(1)} V, Resistance: ${resistance.toFixed(0)} Ω, Power: ${power.toFixed(2)} W.`;
     }
 
     // =========================
