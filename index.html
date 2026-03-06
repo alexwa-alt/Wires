@@ -155,6 +155,37 @@
       line-height: 1.35;
     }
 
+    .activity {
+      border-top: 1px dashed var(--border);
+      margin-top: 8px;
+      padding-top: 8px;
+      font-size: 0.88rem;
+    }
+
+    .activity input[type="text"],
+    .activity input[type="number"] {
+      width: 90px;
+      padding: 4px 6px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin: 0 4px;
+    }
+
+    .check-btn {
+      margin-top: 6px;
+      padding: 5px 8px;
+      font-size: 0.82rem;
+    }
+
+    .feedback {
+      margin-top: 6px;
+      font-size: 0.83rem;
+      font-weight: 700;
+    }
+
+    .feedback.ok { color: #166534; }
+    .feedback.no { color: #b91c1c; }
+
     .legend {
       font-size: 0.82rem;
       color: var(--muted);
@@ -210,6 +241,8 @@
           <button class="stage-tab" data-stage="2">Stage 3: Potential Difference</button>
         </div>
         <div class="stage-card" id="stageCard"></div>
+        <button id="checkStage" class="check-btn">Check answers</button>
+        <div id="stageFeedback" class="feedback" aria-live="polite"></div>
       </section>
 
       <section class="panel">
@@ -244,12 +277,13 @@
 
     const stageCard = document.getElementById('stageCard');
     const stageTabs = [...document.querySelectorAll('.stage-tab')];
+    const checkStageBtn = document.getElementById('checkStage');
+    const stageFeedback = document.getElementById('stageFeedback');
 
     // =========================
     // Simulation geometry
     // =========================
-    const wire = { x: 90, y: 90, w: 640, h: 200 };
-    const battery = { x: 25, y: 120, w: 48, h: 140 };
+    const wire = { x: 80, y: 90, w: 680, h: 200 };
 
     // =========================
     // Physics state and constants
@@ -278,19 +312,43 @@
         title: 'Stage 1 – Current',
         explain: 'Current is the rate of flow of charge. In a metal, electrons have random thermal motion, but voltage creates a net drift through the wire.',
         task: 'Set resistance to about 20 Ω. Increase voltage from 2 V to 10 V and observe the drift velocity and current values rise.',
-        reflect: 'If electrons already move randomly, why does adding voltage produce a current in one direction?'
+        reflect: 'If electrons already move randomly, why does adding voltage produce a current in one direction?',
+        activity: `
+          <div class="activity">
+            <p><strong>Gap-fill:</strong> Current is the rate of flow of <input id="s1gap" type="text" placeholder="term" />.</p>
+            <p><strong>Choose all true statements:</strong></p>
+            <label><input type="checkbox" id="s1c1" /> Higher voltage gives a bigger drift velocity.</label><br>
+            <label><input type="checkbox" id="s1c2" /> Current is measured in amperes.</label><br>
+            <label><input type="checkbox" id="s1c3" /> Resistance is the battery's stored energy.</label>
+          </div>
+        `
       },
       {
         title: 'Stage 2 – Resistance',
         explain: 'Resistance comes from collisions between electrons and the fixed positive ion lattice. More frequent collisions reduce net drift speed.',
         task: 'Keep voltage fixed (e.g., 6 V). Increase resistance from 10 Ω to 80 Ω and watch scattering flashes become more frequent while current falls.',
-        reflect: 'How do more collisions at the microscopic level explain lower current at the macroscopic level?'
+        reflect: 'How do more collisions at the microscopic level explain lower current at the macroscopic level?',
+        activity: `
+          <div class="activity">
+            <p><strong>Gap-fill:</strong> Increasing resistance makes collisions more <input id="s2gap" type="text" placeholder="word" />.</p>
+            <p><strong>Ohm's Law mini-calc:</strong> If V = 6 V and R = 30 Ω, I = <input id="s2calc" type="number" step="0.01" /> A</p>
+            <label><input type="checkbox" id="s2c1" /> More collisions usually reduce net electron drift.</label><br>
+            <label><input type="checkbox" id="s2c2" /> For fixed V, increasing R increases I.</label>
+          </div>
+        `
       },
       {
         title: 'Stage 3 – Potential Difference',
         explain: 'Potential difference (voltage) is energy transferred per unit charge. This energy accelerates electrons between collisions.',
         task: 'Try a low and a high voltage at the same resistance. Compare drift speed and current, and relate this to V = IR.',
-        reflect: 'Why can current still be steady even though each electron repeatedly collides and changes direction?'
+        reflect: 'Why can current still be steady even though each electron repeatedly collides and changes direction?',
+        activity: `
+          <div class="activity">
+            <p><strong>Gap-fill:</strong> Voltage is energy transferred per unit <input id="s3gap" type="text" placeholder="term" />.</p>
+            <p><strong>Ohm's Law mini-calc:</strong> If V = 12 V and R = 24 Ω, I = <input id="s3calc" type="number" step="0.01" /> A</p>
+            <p><strong>Rearrange V = IR:</strong> If I = 0.5 A and R = 8 Ω, V = <input id="s3calc2" type="number" step="0.1" /> V</p>
+          </div>
+        `
       }
     ];
 
@@ -303,8 +361,42 @@
         <p><strong>Explanation:</strong> ${st.explain}</p>
         <p><strong>Guided task:</strong> ${st.task}</p>
         <p><strong>Reflection question:</strong> ${st.reflect}</p>
+        ${st.activity}
       `;
       stageTabs.forEach((b, idx) => b.classList.toggle('active', idx === activeStage));
+      stageFeedback.textContent = '';
+      stageFeedback.className = 'feedback';
+    }
+
+    function approx(val, target, tol = 0.03) {
+      return Math.abs(val - target) <= tol;
+    }
+
+    function checkStageAnswers() {
+      let correct = false;
+      if (activeStage === 0) {
+        const gap = (document.getElementById('s1gap').value || '').trim().toLowerCase();
+        const c1 = document.getElementById('s1c1').checked;
+        const c2 = document.getElementById('s1c2').checked;
+        const c3 = document.getElementById('s1c3').checked;
+        correct = (gap === 'charge') && c1 && c2 && !c3;
+      } else if (activeStage === 1) {
+        const gap = (document.getElementById('s2gap').value || '').trim().toLowerCase();
+        const calc = parseFloat(document.getElementById('s2calc').value);
+        const c1 = document.getElementById('s2c1').checked;
+        const c2 = document.getElementById('s2c2').checked;
+        correct = (gap === 'frequent' || gap === 'frequently') && approx(calc, 0.2, 0.02) && c1 && !c2;
+      } else {
+        const gap = (document.getElementById('s3gap').value || '').trim().toLowerCase();
+        const calc1 = parseFloat(document.getElementById('s3calc').value);
+        const calc2 = parseFloat(document.getElementById('s3calc2').value);
+        correct = (gap === 'charge') && approx(calc1, 0.5, 0.02) && approx(calc2, 4, 0.1);
+      }
+
+      stageFeedback.textContent = correct
+        ? 'Correct ✅ Great job connecting microscopic electron behaviour to circuit equations.'
+        : 'Not quite yet ❌ Check units, signs, and use V = I × R or I = V ÷ R.';
+      stageFeedback.className = `feedback ${correct ? 'ok' : 'no'}`;
     }
 
     // =========================
@@ -427,31 +519,6 @@
     // =========================
     // Drawing helpers
     // =========================
-    function drawBattery() {
-      sctx.save();
-      sctx.fillStyle = '#f3f4f6';
-      sctx.strokeStyle = '#9ca3af';
-      sctx.lineWidth = 1.5;
-      sctx.fillRect(battery.x, battery.y, battery.w, battery.h);
-      sctx.strokeRect(battery.x, battery.y, battery.w, battery.h);
-
-      // Battery plates
-      sctx.strokeStyle = '#111827';
-      sctx.lineWidth = 3;
-      sctx.beginPath();
-      sctx.moveTo(battery.x + 14, battery.y + 35);
-      sctx.lineTo(battery.x + 34, battery.y + 35); // long plate (+)
-      sctx.moveTo(battery.x + 19, battery.y + 100);
-      sctx.lineTo(battery.x + 29, battery.y + 100); // short plate (-)
-      sctx.stroke();
-
-      sctx.fillStyle = '#111827';
-      sctx.font = '12px Arial';
-      sctx.fillText('+', battery.x + 37, battery.y + 39);
-      sctx.fillText('-', battery.x + 37, battery.y + 104);
-      sctx.restore();
-    }
-
     function drawPotentialGradient() {
       // Potential high on right (+ terminal), low on left (- terminal)
       const grad = sctx.createLinearGradient(wire.x, 0, wire.x + wire.w, 0);
@@ -465,9 +532,9 @@
       sctx.strokeRect(wire.x, wire.y, wire.w, wire.h);
 
       sctx.fillStyle = '#374151';
-      sctx.font = '12px Arial';
-      sctx.fillText('Low potential', wire.x + 8, wire.y - 8);
-      sctx.fillText('High potential', wire.x + wire.w - 88, wire.y - 8);
+      sctx.font = '18px Arial';
+      sctx.fillText('-', wire.x + 8, wire.y - 8);
+      sctx.fillText('+', wire.x + wire.w - 16, wire.y - 8);
     }
 
     function drawIonsAndElectrons() {
@@ -602,20 +669,9 @@
 
     function drawScene() {
       sctx.clearRect(0, 0, simCanvas.width, simCanvas.height);
-      drawBattery();
       drawPotentialGradient();
       drawIonsAndElectrons();
       drawCurrentArrows();
-
-      // Wire and battery connectors (simple schematic feel)
-      sctx.strokeStyle = '#374151';
-      sctx.lineWidth = 2;
-      sctx.beginPath();
-      sctx.moveTo(battery.x + battery.w, battery.y + 35);
-      sctx.lineTo(wire.x, wire.y + wire.h - 20);
-      sctx.moveTo(battery.x + battery.w, battery.y + 100);
-      sctx.lineTo(wire.x, wire.y + 20);
-      sctx.stroke();
     }
 
     // =========================
@@ -653,6 +709,8 @@
       });
     });
 
+    checkStageBtn.addEventListener('click', checkStageAnswers);
+
     // =========================
     // Main loop
     // =========================
@@ -679,4 +737,3 @@
   </script>
 </body>
 </html>
-
