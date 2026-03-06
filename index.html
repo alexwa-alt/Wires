@@ -1,1 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Electron Drift, Current, Resistance, and Voltage</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --good: #0f766e;
+      --border: #dbe2ea;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    h1 {
+      font-size: 1.15rem;
+      margin: 0 0 8px;
+    }
+
+    .subtitle {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.3;
+    }
+
+    canvas {
+      width: 100%;
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      margin-top: 10px;
+      align-items: center;
+    }
+
+    .controls label {
+      font-size: 0.9rem;
+      color: #111827;
+    }
+
+    .controls input[type="range"] {
+      width: 100%;
+    }
+
+    .btn-row {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .readout {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fcfdff;
+    }
+
+    .metric .name {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+
+    .metric .val {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--good);
+    }
+
+    .side-stack {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .stage-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .stage-tab.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .stage-card h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .stage-card p {
+      margin: 0 0 8px;
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .legend {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.25;
+    }
+
+    @media (max-width: 980px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="panel">
+      <h1>Electron Motion in a Wire: Linking Microscopic and Macroscopic Physics</h1>
+      <p class="subtitle">Watch electrons move through a metal lattice. Collisions with ions create resistance. Compare drift motion to current, resistance, and potential difference.</p>
+
+      <canvas id="simCanvas" width="820" height="380" aria-label="Electron simulation"></canvas>
+
+      <div class="controls">
+        <label for="voltage">Battery voltage: <strong><span id="voltageLabel">6.0</span> V</strong></label>
+        <input id="voltage" type="range" min="0" max="12" step="0.1" value="6" />
+
+        <label for="resistance">Resistance: <strong><span id="resistanceLabel">20</span> Ω</strong></label>
+        <input id="resistance" type="range" min="1" max="100" step="1" value="20" />
+      </div>
+
+      <div class="btn-row">
+        <button id="toggle" class="primary">Pause</button>
+        <button id="reset">Reset</button>
+      </div>
+
+      <div class="readout">
+        <div class="metric"><div class="name">Current (I)</div><div class="val" id="currentVal">0.30 A</div></div>
+        <div class="metric"><div class="name">Potential Difference (V)</div><div class="val" id="voltVal">6.0 V</div></div>
+        <div class="metric"><div class="name">Resistance (R)</div><div class="val" id="resVal">20 Ω</div></div>
+        <div class="metric"><div class="name">Electron Drift Velocity</div><div class="val" id="driftVal">0.000 px/s</div></div>
+      </div>
+
+      <div class="legend">
+        Blue dots = electrons (mobile). Gray circles = positive ions (fixed lattice). Yellow flashes = scattering collisions.
+        Color in wire shows electric potential (high near + terminal, low near - terminal). Arrows show conventional current direction.
+      </div>
+    </section>
+
+    <aside class="side-stack">
+      <section class="panel">
+        <h2 style="margin:0 0 8px;font-size:1rem;">Guided Learning</h2>
+        <div class="stage-tabs">
+          <button class="stage-tab active" data-stage="0">Stage 1: Current</button>
+          <button class="stage-tab" data-stage="1">Stage 2: Resistance</button>
+          <button class="stage-tab" data-stage="2">Stage 3: Potential Difference</button>
+        </div>
+        <div class="stage-card" id="stageCard"></div>
+      </section>
+
+      <section class="panel">
+        <h2 style="margin:0 0 8px;font-size:1rem;">Real-Time Graphs</h2>
+        <canvas id="graphCanvas" width="360" height="260" aria-label="Current and voltage graphs"></canvas>
+        <p class="legend" style="margin-bottom:0;">Top graph: current vs time (green). Bottom graph: voltage vs time (blue).</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    // =========================
+    // DOM references
+    // =========================
+    const simCanvas = document.getElementById('simCanvas');
+    const sctx = simCanvas.getContext('2d');
+    const graphCanvas = document.getElementById('graphCanvas');
+    const gctx = graphCanvas.getContext('2d');
+
+    const voltageSlider = document.getElementById('voltage');
+    const resistanceSlider = document.getElementById('resistance');
+    const voltageLabel = document.getElementById('voltageLabel');
+    const resistanceLabel = document.getElementById('resistanceLabel');
+
+    const toggleBtn = document.getElementById('toggle');
+    const resetBtn = document.getElementById('reset');
+
+    const currentVal = document.getElementById('currentVal');
+    const voltVal = document.getElementById('voltVal');
+    const resVal = document.getElementById('resVal');
+    const driftVal = document.getElementById('driftVal');
+
+    const stageCard = document.getElementById('stageCard');
+    const stageTabs = [...document.querySelectorAll('.stage-tab')];
+
+    // =========================
+    // Simulation geometry
+    // =========================
+    const wire = { x: 90, y: 90, w: 640, h: 200 };
+    const battery = { x: 25, y: 120, w: 48, h: 140 };
+
+    // =========================
+    // Physics state and constants
+    // =========================
+    let voltage = parseFloat(voltageSlider.value);
+    let resistance = parseFloat(resistanceSlider.value);
+    let running = true;
+
+    const ELECTRON_COUNT = 140;
+    const THERMAL_SPEED = 42; // px/s random thermal motion scale
+    const DRIFT_SCALE = 130;  // converts V/R to visible drift speed
+    const COLLISION_MARK_LIFE = 0.25; // seconds
+
+    const electrons = [];
+    const ions = [];
+    const sparks = [];
+
+    // Graph history (fixed length ring-like arrays)
+    const maxSamples = 320;
+    const iHistory = [];
+    const vHistory = [];
+
+    // Educational stage content
+    const stages = [
+      {
+        title: 'Stage 1 – Current',
+        explain: 'Current is the rate of flow of charge. In a metal, electrons have random thermal motion, but voltage creates a net drift through the wire.',
+        task: 'Set resistance to about 20 Ω. Increase voltage from 2 V to 10 V and observe the drift velocity and current values rise.',
+        reflect: 'If electrons already move randomly, why does adding voltage produce a current in one direction?'
+      },
+      {
+        title: 'Stage 2 – Resistance',
+        explain: 'Resistance comes from collisions between electrons and the fixed positive ion lattice. More frequent collisions reduce net drift speed.',
+        task: 'Keep voltage fixed (e.g., 6 V). Increase resistance from 10 Ω to 80 Ω and watch scattering flashes become more frequent while current falls.',
+        reflect: 'How do more collisions at the microscopic level explain lower current at the macroscopic level?'
+      },
+      {
+        title: 'Stage 3 – Potential Difference',
+        explain: 'Potential difference (voltage) is energy transferred per unit charge. This energy accelerates electrons between collisions.',
+        task: 'Try a low and a high voltage at the same resistance. Compare drift speed and current, and relate this to V = IR.',
+        reflect: 'Why can current still be steady even though each electron repeatedly collides and changes direction?'
+      }
+    ];
+
+    let activeStage = 0;
+
+    function renderStage() {
+      const st = stages[activeStage];
+      stageCard.innerHTML = `
+        <h3>${st.title}</h3>
+        <p><strong>Explanation:</strong> ${st.explain}</p>
+        <p><strong>Guided task:</strong> ${st.task}</p>
+        <p><strong>Reflection question:</strong> ${st.reflect}</p>
+      `;
+      stageTabs.forEach((b, idx) => b.classList.toggle('active', idx === activeStage));
+    }
+
+    // =========================
+    // Initialization helpers
+    // =========================
+    function buildIons() {
+      ions.length = 0;
+      const cols = 22;
+      const rows = 6;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const jitterX = (Math.random() - 0.5) * 6;
+          const jitterY = (Math.random() - 0.5) * 6;
+          ions.push({
+            x: wire.x + 24 + c * ((wire.w - 48) / (cols - 1)) + jitterX,
+            y: wire.y + 20 + r * ((wire.h - 40) / (rows - 1)) + jitterY,
+            r: 7
+          });
+        }
+      }
+    }
+
+    function resetElectrons() {
+      electrons.length = 0;
+      for (let i = 0; i < ELECTRON_COUNT; i++) {
+        electrons.push({
+          x: wire.x + Math.random() * wire.w,
+          y: wire.y + Math.random() * wire.h,
+          vx: (Math.random() - 0.5) * THERMAL_SPEED,
+          vy: (Math.random() - 0.5) * THERMAL_SPEED,
+          r: 3
+        });
+      }
+      sparks.length = 0;
+      iHistory.length = 0;
+      vHistory.length = 0;
+    }
+
+    function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+    // =========================
+    // Physics update
+    // =========================
+    function updatePhysics(dt) {
+      // Macroscopic Ohm's law (enforced for displayed quantities)
+      const current = resistance > 0 ? voltage / resistance : 0;
+
+      // Drift direction for electrons: toward + terminal (left -> right in this setup)
+      const driftTarget = DRIFT_SCALE * current; // px/s
+
+      // Collision chance rises with resistance (shorter mean free path)
+      const collisionProbPerSec = 0.6 + (resistance - 1) / 99 * 9.4; // from ~0.6 to ~10 collisions/s scale
+
+      for (const e of electrons) {
+        // Random thermal jiggle, independent of drift
+        e.vx += (Math.random() - 0.5) * 12 * dt;
+        e.vy += (Math.random() - 0.5) * 12 * dt;
+
+        // Electric field acceleration adds net drift in +x direction
+        const ax = (driftTarget - e.vx) * 1.3;
+        e.vx += ax * dt;
+
+        // Probabilistic scattering events: resistance controls frequency
+        if (Math.random() < collisionProbPerSec * dt) {
+          // Randomize velocity (thermal scattering) and lose drift momentum
+          e.vx = (Math.random() - 0.5) * THERMAL_SPEED + e.vx * 0.2;
+          e.vy = (Math.random() - 0.5) * THERMAL_SPEED;
+          sparks.push({ x: e.x, y: e.y, t: COLLISION_MARK_LIFE });
+        }
+
+        // Explicit collisions with nearby ions (visible mechanism)
+        for (let i = 0; i < ions.length; i++) {
+          const ion = ions[i];
+          const dx = e.x - ion.x;
+          const dy = e.y - ion.y;
+          const rr = ion.r + e.r + 1;
+          if (dx * dx + dy * dy < rr * rr) {
+            e.vx = (Math.random() - 0.5) * THERMAL_SPEED + e.vx * 0.15;
+            e.vy = (Math.random() - 0.5) * THERMAL_SPEED;
+            // Push electron slightly outward to avoid sticking
+            const mag = Math.hypot(dx, dy) || 0.001;
+            e.x = ion.x + (dx / mag) * rr;
+            e.y = ion.y + (dy / mag) * rr;
+            sparks.push({ x: e.x, y: e.y, t: COLLISION_MARK_LIFE });
+            break;
+          }
+        }
+
+        // Update position
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+
+        // Boundaries of wire region
+        if (e.x < wire.x) e.x = wire.x + wire.w;
+        if (e.x > wire.x + wire.w) e.x = wire.x;
+        if (e.y < wire.y) { e.y = wire.y; e.vy *= -0.5; }
+        if (e.y > wire.y + wire.h) { e.y = wire.y + wire.h; e.vy *= -0.5; }
+      }
+
+      // Fade collision markers
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        sparks[i].t -= dt;
+        if (sparks[i].t <= 0) sparks.splice(i, 1);
+      }
+
+      // History for graphs
+      iHistory.push(current);
+      vHistory.push(voltage);
+      if (iHistory.length > maxSamples) iHistory.shift();
+      if (vHistory.length > maxSamples) vHistory.shift();
+
+      // Display readouts
+      const avgDrift = electrons.reduce((s, e) => s + e.vx, 0) / electrons.length;
+      currentVal.textContent = `${current.toFixed(2)} A`;
+      voltVal.textContent = `${voltage.toFixed(1)} V`;
+      resVal.textContent = `${resistance.toFixed(0)} Ω`;
+      driftVal.textContent = `${avgDrift.toFixed(2)} px/s`;
+    }
+
+    // =========================
+    // Drawing helpers
+    // =========================
+    function drawBattery() {
+      sctx.save();
+      sctx.fillStyle = '#f3f4f6';
+      sctx.strokeStyle = '#9ca3af';
+      sctx.lineWidth = 1.5;
+      sctx.fillRect(battery.x, battery.y, battery.w, battery.h);
+      sctx.strokeRect(battery.x, battery.y, battery.w, battery.h);
+
+      // Battery plates
+      sctx.strokeStyle = '#111827';
+      sctx.lineWidth = 3;
+      sctx.beginPath();
+      sctx.moveTo(battery.x + 14, battery.y + 35);
+      sctx.lineTo(battery.x + 34, battery.y + 35); // long plate (+)
+      sctx.moveTo(battery.x + 19, battery.y + 100);
+      sctx.lineTo(battery.x + 29, battery.y + 100); // short plate (-)
+      sctx.stroke();
+
+      sctx.fillStyle = '#111827';
+      sctx.font = '12px Arial';
+      sctx.fillText('+', battery.x + 37, battery.y + 39);
+      sctx.fillText('-', battery.x + 37, battery.y + 104);
+      sctx.restore();
+    }
+
+    function drawPotentialGradient() {
+      // Potential high on right (+ terminal), low on left (- terminal)
+      const grad = sctx.createLinearGradient(wire.x, 0, wire.x + wire.w, 0);
+      grad.addColorStop(0, '#bfdbfe');
+      grad.addColorStop(1, '#fecaca');
+      sctx.fillStyle = grad;
+      sctx.fillRect(wire.x, wire.y, wire.w, wire.h);
+
+      sctx.strokeStyle = '#9ca3af';
+      sctx.lineWidth = 1.5;
+      sctx.strokeRect(wire.x, wire.y, wire.w, wire.h);
+
+      sctx.fillStyle = '#374151';
+      sctx.font = '12px Arial';
+      sctx.fillText('Low potential', wire.x + 8, wire.y - 8);
+      sctx.fillText('High potential', wire.x + wire.w - 88, wire.y - 8);
+    }
+
+    function drawIonsAndElectrons() {
+      // Ions
+      for (const ion of ions) {
+        sctx.beginPath();
+        sctx.fillStyle = '#9ca3af';
+        sctx.arc(ion.x, ion.y, ion.r, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.fillStyle = '#f9fafb';
+        sctx.font = '10px Arial';
+        sctx.fillText('+', ion.x - 3, ion.y + 3);
+      }
+
+      // Collision flashes
+      for (const sp of sparks) {
+        const alpha = clamp(sp.t / COLLISION_MARK_LIFE, 0, 1);
+        sctx.beginPath();
+        sctx.fillStyle = `rgba(250, 204, 21, ${alpha})`;
+        sctx.arc(sp.x, sp.y, 6 * alpha + 2, 0, Math.PI * 2);
+        sctx.fill();
+      }
+
+      // Electrons
+      for (const e of electrons) {
+        sctx.beginPath();
+        sctx.fillStyle = '#2563eb';
+        sctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+        sctx.fill();
+      }
+    }
+
+    function drawCurrentArrows() {
+      // Conventional current from + to - : right to left
+      const y = wire.y + wire.h + 32;
+      sctx.strokeStyle = '#111827';
+      sctx.fillStyle = '#111827';
+      sctx.lineWidth = 2;
+
+      for (let i = 0; i < 4; i++) {
+        const x1 = wire.x + wire.w - 20 - i * 150;
+        const x2 = x1 - 65;
+        sctx.beginPath();
+        sctx.moveTo(x1, y);
+        sctx.lineTo(x2, y);
+        sctx.stroke();
+
+        sctx.beginPath();
+        sctx.moveTo(x2, y);
+        sctx.lineTo(x2 + 9, y - 6);
+        sctx.lineTo(x2 + 9, y + 6);
+        sctx.closePath();
+        sctx.fill();
+      }
+
+      sctx.font = '12px Arial';
+      sctx.fillText('Conventional current direction', wire.x + wire.w - 210, y - 10);
+    }
+
+    function drawGraphs() {
+      const w = graphCanvas.width;
+      const h = graphCanvas.height;
+      gctx.clearRect(0, 0, w, h);
+      gctx.fillStyle = '#ffffff';
+      gctx.fillRect(0, 0, w, h);
+      gctx.strokeStyle = '#d1d5db';
+      gctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+
+      const margin = 30;
+      const split = h / 2;
+
+      // Top chart (Current)
+      drawAxis(gctx, margin, 10, w - margin - 8, split - 18, 'I (A)');
+      drawSeries(gctx, iHistory, {
+        x: margin,
+        y: 10,
+        w: w - margin - 8,
+        h: split - 18,
+        min: 0,
+        max: 12,
+        color: '#059669'
+      });
+
+      // Bottom chart (Voltage)
+      drawAxis(gctx, margin, split + 8, w - margin - 8, split - 18, 'V (V)');
+      drawSeries(gctx, vHistory, {
+        x: margin,
+        y: split + 8,
+        w: w - margin - 8,
+        h: split - 18,
+        min: 0,
+        max: 12,
+        color: '#2563eb'
+      });
+
+      gctx.fillStyle = '#6b7280';
+      gctx.font = '11px Arial';
+      gctx.fillText('time →', w - 48, h - 6);
+    }
+
+    function drawAxis(ctx, x, y, w, h, yLabel) {
+      ctx.strokeStyle = '#9ca3af';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + h);
+      ctx.lineTo(x + w, y + h);
+      ctx.stroke();
+
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '11px Arial';
+      ctx.fillText(yLabel, 4, y + 11);
+    }
+
+    function drawSeries(ctx, data, box) {
+      if (data.length < 2) return;
+      ctx.strokeStyle = box.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      const len = data.length;
+      for (let i = 0; i < len; i++) {
+        const t = i / (maxSamples - 1);
+        const x = box.x + t * box.w;
+        const vNorm = clamp((data[i] - box.min) / (box.max - box.min), 0, 1);
+        const y = box.y + box.h - vNorm * box.h;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function drawScene() {
+      sctx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+      drawBattery();
+      drawPotentialGradient();
+      drawIonsAndElectrons();
+      drawCurrentArrows();
+
+      // Wire and battery connectors (simple schematic feel)
+      sctx.strokeStyle = '#374151';
+      sctx.lineWidth = 2;
+      sctx.beginPath();
+      sctx.moveTo(battery.x + battery.w, battery.y + 35);
+      sctx.lineTo(wire.x, wire.y + wire.h - 20);
+      sctx.moveTo(battery.x + battery.w, battery.y + 100);
+      sctx.lineTo(wire.x, wire.y + 20);
+      sctx.stroke();
+    }
+
+    // =========================
+    // UI event handlers
+    // =========================
+    function refreshLabels() {
+      voltageLabel.textContent = voltage.toFixed(1);
+      resistanceLabel.textContent = resistance.toFixed(0);
+    }
+
+    voltageSlider.addEventListener('input', () => {
+      voltage = parseFloat(voltageSlider.value);
+      refreshLabels();
+    });
+
+    resistanceSlider.addEventListener('input', () => {
+      resistance = parseFloat(resistanceSlider.value);
+      refreshLabels();
+    });
+
+    toggleBtn.addEventListener('click', () => {
+      running = !running;
+      toggleBtn.textContent = running ? 'Pause' : 'Start';
+      toggleBtn.classList.toggle('primary', running);
+    });
+
+    resetBtn.addEventListener('click', () => {
+      resetElectrons();
+    });
+
+    stageTabs.forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        activeStage = i;
+        renderStage();
+      });
+    });
+
+    // =========================
+    // Main loop
+    // =========================
+    let last = performance.now();
+    function animate(now) {
+      const dt = Math.min((now - last) / 1000, 0.033);
+      last = now;
+
+      if (running) {
+        updatePhysics(dt);
+      }
+      drawScene();
+      drawGraphs();
+
+      requestAnimationFrame(animate);
+    }
+
+    // Setup
+    buildIons();
+    resetElectrons();
+    refreshLabels();
+    renderStage();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
 
